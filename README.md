@@ -14,14 +14,14 @@ GET /path?foo=bar HTTP/1.1
 - 8.1.3 查询字符串
   - 查询字符串位于路径之后，在地址栏中路径后的?foo=bar&baz=val字符串就是查询字符串
   - 这个字符串会跟随在路径后，形成请求报文首行的第二部分。这部分内容经常需要为业务逻辑所用，Node提供了queryString模块用于处理这部分数据，如下所示：
-```
-var url = require('url');
-var queryString = require('queryString');
-var query = queryString.parse(url.parse(req.url).query);
-或者
-var query = url.parse(req.url, true).query
-{
-  foo: 'bar',
-  baz: 'val'
-}
-```
+  ```
+  var url = require('url');
+  var queryString = require('queryString');
+  var query = queryString.parse(url.parse(req.url).query);
+  或者
+  var query = url.parse(req.url, true).query
+  {
+    foo: 'bar',
+    baz: 'val'
+  }
+  ```
