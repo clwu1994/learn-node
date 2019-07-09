@@ -14,6 +14,7 @@ GET /path?foo=bar HTTP/1.1
 - 8.1.3 查询字符串
   - 查询字符串位于路径之后，在地址栏中路径后的?foo=bar&baz=val字符串就是查询字符串
   - 这个字符串会跟随在路径后，形成请求报文首行的第二部分。这部分内容经常需要为业务逻辑所用，Node提供了queryString模块用于处理这部分数据，如下所示：
+  
   ```
   var url = require('url');
   var queryString = require('queryString');
@@ -25,3 +26,11 @@ GET /path?foo=bar HTTP/1.1
     baz: 'val'
   }
   ```
+- Cookie
+  1. 初始Cookie
+  因为HTTP是无状态协议，现实中的业务却需要一定的状态，否则无法区分用户之间的身份。如何标识和认证一个用户，最早的方案就是Cookie了。
+    Cookie的处理分为如下几步：
+    - 服务器向客户端发送Cookie
+    - 浏览器将Cookie保存
+    - 之后每次浏览器都会将Cookie发向服务器端
+  HTTP_Parser会将所有报文字段解析到req.headers上，那么Cookie就是req.headers.cookie。根据规范中的定义，Cookie值的格式是Key=value; key2=value2形式的，如果我们需要Cookie，解析它也十分容易。
