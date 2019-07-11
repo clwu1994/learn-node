@@ -66,3 +66,93 @@ GET /path?foo=bar HTTP/1.1
   - 配置ETags。
   - 让Ajax可缓存。
   如何让浏览器缓存我们的静态资源，这也是需要由服务器与浏览器共同协作完成的事情。通常来说，PUT、DELETE、PUT这类带行为性的请求操作一般不做任何缓存，大多数缓存只应用在GET请求中。
+  缓存使用时间戳方式存在缺陷：
+  - 文件的时间戳改动但内容并不一定改动。
+  - 时间戳只能精确到秒级别，更新频繁的内容将无法生效。
+  为此HTTP1.1中引入了ETag来解决这个问题。ETag的全称是Entity Tag，由服务器端生成，服务器端可以决定它的生成规则。如果根据文件内容生成散列值，那么条件请求将不会受到时间戳改动造成的带宽浪费。
+  ```javascript
+  var getHash = function(str) {
+    var shasum = crypto.createHash('sha1');
+    return shasum.update(str).digest('base64');
+  }
+  ```
+  与If-Modified-Since/Last-Modified不同的是，ETag的请求和响应式If-None-Match/ETag，如下所示：
+  ```javascript
+  var handle = function(req, res) {
+    fs.readFile(filename, function(err, file) {
+      var hash = getHash(file);
+      var noneMatch = req.headers['if-none-match'];
+      if (hash === noneMatch) {
+        res.writeHeader(304, 'Not Modified');
+        res.end();
+      } else {
+        res.setHeader('ETag', hash);
+        res.writeHead(200, 'ok');
+        res.end(file);
+      }
+    })
+  }
+  ```
+  HTTP1.0时，在服务器端设置Expires可以告知浏览器要缓存文件内容，如下代码所示：
+  ```
+  var handle = function(req, res) {
+    fs.readFile(filename, function(err, file) {
+      var expires = new Date();
+      expires.setTime(expires.getTime() + 10*365*24*60*60*1000);
+      res.setHeader('Expires', expires.toUTCString());
+      res.writeHead(200, 'ok');
+      res.end(file);
+    })
+  } 
+  ```
+  Expires是一个GMT格式的时间字符串。浏览器在接到这个过期值后，只要本地还存在这个缓存文件，在到期时间之前它都不会再发起请求。
+  但是Expires的缺陷在于浏览器与服务器之间的时间可能不一致，这可能会带来一些问题，比如文件提前过期，或者到期后并没有被删除。在这种情况下，Cache-Control以更丰富的形式，实现相同的功能，如下所示：
+  ```javascript
+  var handle = function(req, res) {
+    fs.readFile(filename, function(err, file) {
+      res.setHeader('Cache-Control', 'max-age=' + 10*365*24*60*60*1000);
+      res.writeHead(200, 'ok');
+      res.end(file);
+    })
+  }
+  ```
+  上面Cache-Control设置了max-age值，比Expires优秀在于，Cache-Control能够避免浏览器端与服务器端时间不同步带来的不一致性问题，只要出现类似倒计时的方式计算过期时间即可。
+  8.1.7 Basic认证
+  请求报头中：
+  > 
+    \> GET / http/1.1 
+    \> Authorization: Basic dxNlcjpwYXNz
+  在Basic认证中，它会将用户名和密码部分组合：username + ':' + password。然后进行Base64编码，如下所示：
+  ```javascript
+  var encode = function(username, password) {
+    return new Buffer(username + ':' + password).toString('base64');
+  }
+  ```
+  如果用户首次访问该网页，URL地址中也没有携带认证内容，那么浏览器会响应一个401未授权的状态码，如下所示：
+  ```javascript
+  function(req, res) {
+    var auth = req.header['authorization'] || '';
+    var parts = auth.split(' ');
+    var method = parts[0] || ''; // Basic
+    var encoded = parts[1] || ''; // dxNlcjpwYXNz
+    var decoded = new Buffer(encoded, 'base64').toString('utf-8').split(':');
+    var user = decoded[0]; // user
+    var pass = decoded[1]; // pass
+    if (!checkUser(user, pass)) {
+      res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
+      res.writeHead(401);
+      res.end();
+    } else {
+      handle(req, res);
+    }
+  }
+  ```
+  8.2 数据上传
+  Node的http模块只对HTTP报文的头部进行了解析，然后触发request事件。如果请求中还带有内容部分（如POST请求，它具有报文和内容），
+  内容部分需要用户自行接收和解析。通过报文的Transfer-Encoding或Content-Length即可判断请求中是否带有内容，如下所示：
+  ```javascript
+  var hasBody = function(req) {
+    return 'transfer-encoding' in req.headers || 'content-length' in req.headers;
+  }
+  ```
+  在HTTP_Parser解析报文头结束后，报文内容部分会通过data事件触发，我们只需以流的方式处理即可，如下所示：
