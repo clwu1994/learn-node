@@ -270,3 +270,21 @@ GET /path?foo=bar HTTP/1.1
     }
   }
   ```
+  formidable模块基于流式处理解析报文，将接受到的文件写入到系统的临时文件中，并返回对应的路径，如下所示：
+  ```javascript
+  var formidable = require('formidable');
+  function parseMultipart(req, res) {
+    if (hasBody(req)) {
+      if (mime(req) === 'multipart/form-data') {
+        var form = new formidable.IncomingForm();
+        form.parse(req, function(err, fields, files) {
+          req.body = fields;
+          req.files = files;
+          handle(req, res);
+        })
+      }
+    } else {
+      handle(req, res);
+    }
+  }
+  ```
