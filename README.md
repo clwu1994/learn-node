@@ -156,3 +156,117 @@ GET /path?foo=bar HTTP/1.1
   }
   ```
   在HTTP_Parser解析报文头结束后，报文内容部分会通过data事件触发，我们只需以流的方式处理即可，如下所示：
+  ```javascript
+  function(req, res) {
+    if (hasBody(req)) {
+      var buffers = [];
+      req.on('data', function(chunk) {
+        buffers.push(chunk);
+      });
+      req.on('end', function() {
+        req.rawBody = Buffer.concat(buffers).toString();
+        handle(req, res);
+      })
+    } else {
+      handle(req, res);
+    }
+  }
+  ```
+  将接收到的Buffer列表转化为一个Buffer对象后，再转换为没有乱码的字符串，暂时挂置在req.rawBody处。
+  8.2.1 表单数据
+  ```html
+  <form action="/upload" method="post">
+    <label for="username">Username:</label>
+    <input type="text" name="username" id="username"/>
+    <br/>
+    <input type="submit" name="submit" value="Submit" />
+  </form>
+  ```
+  默认的表单提交，请求头中的Content-Type字段值为application/x-www-form-urlencoded，如下所示：
+  Content-Type: application/x-www-form-urlencoded
+  ```javascript
+  var hanlde = function(req, res) {
+    if (req.headers['content-type'] === 'application/x-www-form-urlencoded') {
+      res.body = queryString.parse(req.rawBody);
+    }
+    todo(req, res);
+  }
+  ```
+  后续业务中直径访问req.body就可以得到表单中提交的数据
+  8.2.2 其他格式
+  ```javascript
+  var mine = function(req) {
+    var str = req.headers['content-type'] || '';
+    return str.split(';')[0];
+  }
+  ```
+  1.JSON文件
+  如果从客户端提交JSON内容，这对于Node来说，要处理它不需要额外的任何库，如下所示：
+  ```javascript
+  var handle = function(req, res) {
+    if (mine(req) === 'application/json') {
+      try {
+        req.body = JSON.parse(req.rawBody);
+      } catch (e) {
+        // 异常内容，响应Bad request，
+        res.writeHead(400);
+        res.end('Invalid JSON');
+        return;
+      }
+    }
+    todo(req, res);
+  }
+  ```
+  2.XML文件
+  解析XML文件，社区的xml2js模块支持XML文件转JSON对象
+  ```javascript
+  var xml2js = require('xml2js');
+  var handle = function(req, res) {
+    if (mime(req) === 'application/xml') {
+      xml2js.parseString(req.rawBody, function(err, xml) {
+        if (err) {
+          // 异常内容，响应Bad request
+          res.writeHead(400);
+          res.end('Invalid XML');
+          return;
+        }
+        req.body = xml;
+        todo(req, res);
+      })
+    }
+  }
+  ```
+  8.2.3 附件上传
+  在前端HTML代码中，特殊表单与普通表单的差异在于该表单中可以含有file类型的控件，以及需要指定表单属性enctype为multipart/form-data，如下所示：
+    ```html
+  <form action="/upload" method="post">
+    <label for="username">Username:</label><input type="text" name="username" id="username"/>
+    <label for="username">Filename:</label><input type="file" name="file" id="file"/>
+    <br/>
+    <input type="submit" name="submit" value="Submit" />
+  </form>
+  ```
+  浏览器在遇到multipart/form-data表单提交时，构造的请求报文与普通表单完全不同。
+  Content-Type: multipart/form-data; boundary=AaB03x
+  Content-Length: 18231
+  由于是文件上传，接受大小未知的数据量时，我们需要十分谨慎。
+  ```javascript
+  function(req, res) {
+    if (hasBody(req)) {
+      var done = function() {
+        handle(req, res);
+      };
+      if (mime(req) === 'application/json') {
+        parseJSON(req, done);
+      }
+      else if (mime(req) === 'application/xml') {
+        parseXML(req, done);
+      }
+      else if (mime(req) === 'multipart/form-data') {
+        parseMultipart(req, done);
+      }
+    } else {
+      handle(req, res);
+    }
+  }
+  ```
